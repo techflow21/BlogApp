@@ -1,8 +1,8 @@
-﻿using BlogApp.API.Models;
+﻿using BlogApp.API.DTOs;
+using BlogApp.API.Models;
 using BlogApp.API.Repository;
 using BlogApp.API.Services;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
@@ -36,10 +36,11 @@ namespace BlogApp.API.Controllers
                 Email = req.Email,
                 NormalizedEmail = req.Email.ToUpper(),
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
-                FullName = req.Username,
+                FullName = req.FullName,
                 EmailConfirmed = false,
+                CreatedAt = DateTime.UtcNow,
                 Roles = new() { "User" },
-                Claims = new() { { "CanPost", "true" } } // example claim
+                Claims = new() { { "CanPost", "true" } }
             };
             await _identityRepo.CreateAsync(user);
 
@@ -147,8 +148,8 @@ namespace BlogApp.API.Controllers
 
             if (profileImage is not null && profileImage.Length > 0)
             {
-                var url = await _files.SaveProfileImageAsync(profileImage, uid);
-                user.ProfileImageUrl = url;
+                //var url = await _files.SaveProfileImageAsync(profileImage, uid);
+                //user.ProfileImageUrl = url;
             }
 
             await _identityRepo.UpdateAsync(user);
