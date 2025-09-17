@@ -1,0 +1,12 @@
+services:
+  blogapp.api:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      - mongo
+      - redis
+    ports:
+      - "8080:8080"   # Host:Container
+      - "8081:8081"
+
+

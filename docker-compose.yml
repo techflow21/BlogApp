@@ -1,0 +1,39 @@
+﻿services:
+  blogapp.api:
+    build:
+      context: .
+      dockerfile: BlogApp.API/Dockerfile
+    depends_on:
+      - mongo
+      - redis
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    ports:
+      - "5000:80"   # HTTP → API inside container listens on 80
+      - "5001:443"  # HTTPS → API inside container listens on 443
+
+  mongo:
+    image: mongo:6.0
+    container_name: mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7.2
+    container_name: redisdb
+    restart: always
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mongo_data:
+  redis_data:
