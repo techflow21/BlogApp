@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
+using Prometheus;
 using Serilog;
 using StackExchange.Redis;
 using System.Text;
@@ -62,8 +63,7 @@ namespace BlogApp.API
 
             // JWT Auth
             var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>()!;
-            builder.Services
-                .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(o =>
                 {
                     o.TokenValidationParameters = new TokenValidationParameters
@@ -98,12 +98,19 @@ namespace BlogApp.API
 
             var app = builder.Build();
 
+            app.UseRouting();
+            app.UseHttpMetrics(); // Collect default HTTP request metrics (middleware)
+
+            app.MapControllers();
+            app.MapMetrics(); // Exposes /metrics endpoint
+
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
+
             // Mongo indices (optional)
             var db = app.Services.GetRequiredService<IMongoDatabase>();
             var users = db.GetCollection<User>("Users");
