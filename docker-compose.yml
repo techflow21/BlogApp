@@ -1,4 +1,6 @@
-﻿services:
+﻿version: '3.9'
+
+services:
   blogapp.api:
     build:
       context: .
@@ -9,8 +11,8 @@
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
     ports:
-      - "5000:80"   # HTTP → API inside container listens on 80
-      - "5001:443"  # HTTPS → API inside container listens on 443
+      - "5000:80"
+      - "5001:443"
 
   mongo:
     image: mongo:6.0
@@ -19,8 +21,8 @@
     ports:
       - "27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: admin
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=admin
     volumes:
       - mongo_data:/data/db
 
@@ -36,6 +38,7 @@
 
   prometheus:
     image: prom/prometheus:latest
+    container_name: prometheus
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
@@ -43,6 +46,7 @@
 
   grafana:
     image: grafana/grafana:9.5
+    container_name: grafana
     ports:
       - "3000:3000"
     environment:
@@ -50,16 +54,19 @@
 
   jaeger:
     image: jaegertracing/all-in-one:1.47
+    container_name: jaeger
     ports:
       - "16686:16686"   # Jaeger UI
       - "6831:6831/udp" # Jaeger agent (OTLP/UDP)
 
   seq:
     image: datalust/seq:latest
+    container_name: seq
     ports:
       - "5341:80"
     environment:
       - ACCEPT_EULA=Y
+
 volumes:
   mongo_data:
   redis_data:
