@@ -3,7 +3,6 @@ using BlogApp.API.Models;
 using BlogApp.API.Repository;
 using BlogApp.API.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Builder.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
 using OpenTelemetry.Resources;
@@ -39,8 +38,7 @@ namespace BlogApp.API
 
             // Configure Serilog with Seq
             Log.Logger = new LoggerConfiguration()
-                .MinimumLevel.Information()
-                .WriteTo.Console()
+                .MinimumLevel.Information().WriteTo.Console()
                 .WriteTo.Seq("http://seq:5341") // internal docker network URL
                 .Enrich.FromLogContext().CreateLogger();
 
