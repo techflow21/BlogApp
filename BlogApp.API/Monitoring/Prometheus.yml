@@ -7,4 +7,3 @@ scrape_configs:
     static_configs:
       - targets: ['blogapp.api:80']   # for docker use
       #- targets: ['localhost:5000']   # for without docker use
-  
