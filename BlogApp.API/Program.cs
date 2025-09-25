@@ -3,9 +3,10 @@ using BlogApp.API.Models;
 using BlogApp.API.Repository;
 using BlogApp.API.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Builder.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Prometheus;
 using Serilog;
 using StackExchange.Redis;
@@ -28,11 +29,34 @@ namespace BlogApp.API
                 .CreateLogger();
 
             builder.Host.UseSerilog();*/
-            builder.Host.UseSerilog((context, services, configuration) =>
+            //builder.Host.UseSerilog((context, services, configuration) =>
+            //{
+            //    configuration.ReadFrom.Configuration(context.Configuration)
+            //                 .ReadFrom.Services(services)
+            //                 .Enrich.FromLogContext();
+            //});
+
+            // Configure Serilog with Seq
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Information().WriteTo.Console()
+                .WriteTo.Seq("http://seq:5341") // internal docker network URL
+                .Enrich.FromLogContext().CreateLogger();
+
+            builder.Host.UseSerilog();
+
+            // Configure OpenTelemetry for Jaeger
+            builder.Services.AddOpenTelemetry()
+            .WithTracing(tracerProviderBuilder =>
             {
-                configuration.ReadFrom.Configuration(context.Configuration)
-                             .ReadFrom.Services(services)
-                             .Enrich.FromLogContext();
+                tracerProviderBuilder
+                    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BlogApp.API"))
+                    .AddAspNetCoreInstrumentation().AddHttpClientInstrumentation()
+                    .AddOtlpExporter(opt =>
+                    {
+                        // Point OTLP traces to Jaeger
+                        opt.Endpoint = new Uri("http://jaeger:4317");
+                        opt.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.Grpc;
+                    });
             });
 
             // Redis setup
