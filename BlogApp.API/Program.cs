@@ -42,22 +42,24 @@ namespace BlogApp.API
                 .MinimumLevel.Information()
                 .WriteTo.Console()
                 .WriteTo.Seq("http://seq:5341") // internal docker network URL
-                .Enrich.FromLogContext()
-                .CreateLogger();
+                .Enrich.FromLogContext().CreateLogger();
 
             builder.Host.UseSerilog();
 
             // Configure OpenTelemetry for Jaeger
             builder.Services.AddOpenTelemetry()
-                .WithTracing(tracerProviderBuilder =>
-                {
-                    tracerProviderBuilder.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BlogApp.API"))
-                        .AddAspNetCoreInstrumentation().AddHttpClientInstrumentation()
-                        .AddOtlpExporter(o =>
-                        {
-                            //o.Endpoint = "jaeger:6831";   // docker-compose service name
-                        });
-                });
+            .WithTracing(tracerProviderBuilder =>
+            {
+                tracerProviderBuilder
+                    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BlogApp.API"))
+                    .AddAspNetCoreInstrumentation().AddHttpClientInstrumentation()
+                    .AddOtlpExporter(opt =>
+                    {
+                        // Point OTLP traces to Jaeger
+                        opt.Endpoint = new Uri("http://jaeger:4317");
+                        opt.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.Grpc;
+                    });
+            });
 
             // Redis setup
             builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
