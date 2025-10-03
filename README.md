@@ -1,1 +1,1 @@
-# Blog Application
+# Fullstack Blog Application
