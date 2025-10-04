@@ -1,1 +1,2 @@
-# Fullstack Blog App
+# Fullstack Blog Application
+<p>This Fullstack Blog Application features these advanced technologies:</p>
