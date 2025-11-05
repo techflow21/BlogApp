@@ -5,14 +5,27 @@ services:
     build:
       context: .
       dockerfile: BlogApp.API/Dockerfile
+    container_name: blogapp_api
+    restart: always
     depends_on:
-      - mongo
-      - redis
+      mongo:
+        condition: service_started
+      redis:
+        condition: service_healthy
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ASPNETCORE_URLS: "http://+:80;https://+:443"
+      Redis__ConnectionString: "redis:6379"
+      Mongo__ConnectionString: "mongodb://admin:admin@mongo:27017"
+      GC_OTLP_ENDPOINT: "https://otlp-gateway-prod-eu-central-0.grafana.net/otlp"
+      GC_API_KEY: "MTQwMjIyMzpnbGNfZXlKdklqb2lNVFUxTnpVeE5DSXNJbTRpT2lKa1pYWnpibTkzZEdWamFITWlMQ0pySWpvaVVsTnljREJvVDFSd01YVkhOekJuTmxBMmJEazJPRlkxSWl3aWJTSTZleUp5SWpvaWNISnZaQzFsZFMxalpXNTBjbUZzTFRBaWZYMD0="
     ports:
       - "5000:80"
       - "5001:443"
+    volumes:
+      - ./data/healthchecks:/app
+    networks:
+      - blogapp_network
 
   mongo:
     image: mongo:6.0
@@ -21,10 +34,12 @@ services:
     ports:
       - "27017:27017"
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=admin
-      - MONGO_INITDB_ROOT_PASSWORD=admin
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
     volumes:
       - mongo_data:/data/db
+    networks:
+      - blogapp_network
 
   redis:
     image: redis:7.2
@@ -35,35 +50,18 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
-
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    ports:
-      - "9090:9090"
-
-  grafana:
-    image: grafana/grafana:9.5
-    container_name: grafana
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-
-  jaeger:
-    image: jaegertracing/all-in-one:1.47
-    container_name: jaeger
-    ports:
-      - "16686:16686"   # Jaeger UI
-      - "6831:6831/udp" # Legacy agent
-      - "4317:4317"     # OTLP gRPC
-      - "4318:4318"     # OTLP HTTP
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - blogapp_network
 
   seq:
-    image: datalust/seq:latest
+    image: datalust/seq
     container_name: seq
+    restart: always
     ports:
       - "5341:80"
     environment:
@@ -72,3 +70,7 @@ services:
 volumes:
   mongo_data:
   redis_data:
+
+networks:
+  blogapp_network:
+    driver: bridge

@@ -1,10 +1,15 @@
 using BlogApp.API.EndPointsExtension;
-using BlogApp.API.Models;
 using BlogApp.API.Repository;
 using BlogApp.API.Services;
+using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpLogging;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Prometheus;
@@ -19,138 +24,203 @@ namespace BlogApp.API
         public static async Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+            var config = builder.Configuration;
 
-            // Serilog
-            /*Log.Logger = new LoggerConfiguration()
-                .WriteTo.Console()
-                .WriteTo.File("logs/app-.log", rollingInterval: RollingInterval.Day)
-                .Enrich.FromLogContext()
-                .MinimumLevel.Information()
-                .CreateLogger();
+            // =====================
+            // Load environment variables (Grafana OTLP)
+            // =====================
+            var otlpEndpoint = Environment.GetEnvironmentVariable("GC_OTLP_ENDPOINT");
+            var gcApiKey = Environment.GetEnvironmentVariable("GC_API_KEY");
 
-            builder.Host.UseSerilog();*/
-            //builder.Host.UseSerilog((context, services, configuration) =>
-            //{
-            //    configuration.ReadFrom.Configuration(context.Configuration)
-            //                 .ReadFrom.Services(services)
-            //                 .Enrich.FromLogContext();
-            //});
-
-            // Configure Serilog with Seq
+            // =====================
+            // Serilog (Console + JSON)
+            // =====================
             Log.Logger = new LoggerConfiguration()
-                .MinimumLevel.Information().WriteTo.Console()
-                .WriteTo.Seq("http://seq:5341") // internal docker network URL
-                .Enrich.FromLogContext().CreateLogger();
+                .MinimumLevel.Information()
+                .Enrich.FromLogContext()
+                .WriteTo.Console(new Serilog.Formatting.Json.JsonFormatter())
+                .CreateLogger();
 
             builder.Host.UseSerilog();
 
-            // Configure OpenTelemetry for Jaeger
-            builder.Services.AddOpenTelemetry()
-            .WithTracing(tracerProviderBuilder =>
-            {
-                tracerProviderBuilder
-                    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BlogApp.API"))
-                    .AddAspNetCoreInstrumentation().AddHttpClientInstrumentation()
-                    .AddOtlpExporter(opt =>
-                    {
-                        // Point OTLP traces to Jaeger
-                        opt.Endpoint = new Uri("http://jaeger:4317");
-                        opt.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.Grpc;
-                    });
-            });
+            // =====================
+            // Redis & Mongo setup
+            // =====================
+            var redisConn = config.GetSection("Redis:ConnectionString").Value ?? "localhost:6379";
+            builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+                ConnectionMultiplexer.Connect(redisConn));
 
-            // Redis setup
-            builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
-            {
-                var config = builder.Configuration["Redis:ConnectionString"];
-                return ConnectionMultiplexer.Connect(config!);
-            });
+            builder.Services.AddSingleton<IMongoClient>(_ =>
+                new MongoClient(config["MongoDb:ConnectionString"] ?? "mongodb://mongo:27017"));
 
-            // Mongo setup
-            var mongoConn = builder.Configuration["MongoDb:ConnectionString"];
-            var dbName = builder.Configuration["MongoDb:DatabaseName"];
-            builder.Services.AddSingleton<IMongoClient>(_ => new MongoClient(mongoConn));
             builder.Services.AddSingleton(sp =>
             {
                 var client = sp.GetRequiredService<IMongoClient>();
-                return client.GetDatabase(dbName);
+                return client.GetDatabase(config["MongoDb:DatabaseName"] ?? "BlogAppDb");
             });
 
-            // options binding
-            builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
-            builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
-            builder.Services.Configure<FileStorageOptions>(builder.Configuration.GetSection("FileStorage"));
-
-            builder.Services.AddSingleton<IJwtService, JwtService>();
+            // =====================
+            // Services registration
+            // =====================
             builder.Services.AddSingleton<IEmailService, EmailService>();
             builder.Services.AddSingleton<IFileService, FileService>();
+            builder.Services.AddSingleton<ICacheService, CacheService>();
+            builder.Services.AddSingleton<PostRepository>();
 
-            // JWT Auth
-            var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>()!;
+            // =====================
+            // JWT Setup
+            // =====================
+            var jwtSection = config.GetSection("Jwt");
+            var jwtKey = jwtSection["Key"];
+
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(o =>
                 {
                     o.TokenValidationParameters = new TokenValidationParameters
                     {
-                        ValidIssuer = jwt.Issuer,
-                        ValidAudience = jwt.Audience,
-                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key)),
                         ValidateIssuer = true,
                         ValidateAudience = true,
                         ValidateLifetime = true,
                         ValidateIssuerSigningKey = true,
-                        ClockSkew = TimeSpan.FromSeconds(30)
+                        ValidIssuer = jwtSection["Issuer"],
+                        ValidAudience = jwtSection["Audience"],
+                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey!))
                     };
                 });
 
-            // Authorization policies (role & claim)
             builder.Services.AddAuthorization(options =>
             {
-                options.AddPolicy("CanPostPolicy", p => p.RequireClaim("CanPost", "true"));
-                options.AddPolicy("AdminOnly", p => p.RequireRole("Admin"));
+                options.AddPolicy("RequireAdmin", policy =>
+                    policy.RequireClaim("role", "Admin"));
             });
-                        
 
-            builder.Services.AddSingleton<ICacheService, CacheService>();
+            // =====================
+            // OpenTelemetry
+            // =====================
+            builder.Services.AddOpenTelemetry()
+                .ConfigureResource(r => r.AddService("BlogApp.API"))
+                .WithTracing(t =>
+                {
+                    t.AddAspNetCoreInstrumentation()
+                     .AddHttpClientInstrumentation()
+                     .AddMongoDBInstrumentation()
+                     .AddRedisInstrumentation();
 
-            // Register repository
-            builder.Services.AddSingleton<PostRepository>();
+                    if (!string.IsNullOrEmpty(otlpEndpoint))
+                    {
+                        t.AddOtlpExporter(opt =>
+                        {
+                            opt.Endpoint = new Uri(otlpEndpoint);
+                            opt.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
+                            if (!string.IsNullOrEmpty(gcApiKey))
+                                opt.Headers = $"Authorization=Bearer {gcApiKey}";
+                        });
+                    }
+                })
+                .WithMetrics(m =>
+                {
+                    m.AddAspNetCoreInstrumentation()
+                     .AddRuntimeInstrumentation()
+                     .AddHttpClientInstrumentation();
 
+                    if (!string.IsNullOrEmpty(otlpEndpoint))
+                    {
+                        m.AddOtlpExporter(opt =>
+                        {
+                            opt.Endpoint = new Uri(otlpEndpoint);
+                            opt.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
+                            if (!string.IsNullOrEmpty(gcApiKey))
+                                opt.Headers = $"Authorization=Bearer {gcApiKey}";
+                        });
+                    }
+                });
+
+            // =====================
+            // Health Checks + UI
+            // =====================
+            builder.Services.AddHealthChecks()
+                .AddCheck("self", () => HealthCheckResult.Healthy())
+                .AddRedis(redisConn, name: "redis", failureStatus: HealthStatus.Degraded)
+                .AddMongoDb(
+                    mongodbConnectionString: config["MongoDb:ConnectionString"] ?? "mongodb://mongo:27017",
+                    name: "mongodb",
+                    failureStatus: HealthStatus.Unhealthy);
+
+            // Add HealthChecks UI with persistent SQLite storage
+            builder.Services
+                .AddHealthChecksUI(opt =>
+                {
+                    opt.AddHealthCheckEndpoint("BlogApp API", "/health");
+                })
+                .AddSqliteStorage("Data Source=healthchecks.db");
+
+            // =====================
+            // Swagger + Controllers
+            // =====================
             builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
+            builder.Services.AddSwaggerGen(options =>
+            {
+                // Add JWT Auth to Swagger
+                options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                {
+                    In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+                    Description = "Please enter JWT with Bearer into field",
+                    Name = "Authorization",
+                    Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey
+                });
+                options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement {
+                {
+                    new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                    {
+                        Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                        {
+                            Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                            Id = "Bearer"
+                        }
+                    },
+                    Array.Empty<string>()
+                }
+            });
+            });
+
+            builder.Services.AddHttpLogging(o => o.LoggingFields = HttpLoggingFields.All);
 
             var app = builder.Build();
 
+            // =====================
+            // Middleware
+            // =====================
+            app.UseSwagger();
+            app.UseSwaggerUI();
+
+            app.UseSerilogRequestLogging();
+            app.UseHttpLogging();
+
             app.UseRouting();
-            app.UseHttpMetrics(); // Collect default HTTP request metrics (middleware)
-
-            app.MapControllers();
-            app.MapMetrics(); // Exposes /metrics endpoint
-
-            // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
-            {
-                app.UseSwagger();
-                app.UseSwaggerUI();
-            }
-
-            // Mongo indices (optional)
-            var db = app.Services.GetRequiredService<IMongoDatabase>();
-            var users = db.GetCollection<User>("Users");
-            await users.Indexes.CreateOneAsync(new CreateIndexModel<User>(
-                Builders<User>.IndexKeys.Ascending(u => u.NormalizedEmail),
-                new CreateIndexOptions { Unique = true }));
-            // 
-            app.MapPostEndpoints();
-
-            app.UseHttpsRedirection();
-            app.UseStaticFiles();
             app.UseAuthentication();
             app.UseAuthorization();
 
+            // Prometheus metrics
+            app.UseHttpMetrics();
             app.MapControllers();
+            app.MapMetrics();
 
+            // Map health check endpoints
+            app.MapHealthChecks("/health", new HealthCheckOptions
+            {
+                ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+            });
+
+            // Map the Health Checks UI dashboard
+            app.MapHealthChecksUI(options =>
+            {
+                options.UIPath = "/health-ui";
+            });
+
+            app.MapPostEndpoints();
+
+            Log.Information("BlogApp.API started successfully!");
             await app.RunAsync();
         }
     }
