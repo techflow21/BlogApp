@@ -137,7 +137,7 @@ namespace BlogApp.API.Controllers
 
         [Authorize]
         [HttpPut("me")]
-        public async Task<IActionResult> Update([FromForm] UpdateProfileRequest req, [FromForm] IFormFile? profileImage)
+        public async Task<IActionResult> Update([FromForm] UpdateProfileRequest req, IFormFile? profileImage)
         {
             var uid = User.FindFirstValue("uid")!;
             var user = await _identityRepo.FindByIdAsync(uid);

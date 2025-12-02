@@ -1,9 +1,0 @@
-﻿global:
-  scrape_interval: 60s
-
-scrape_configs:
-  - job_name: 'blogapp-api'
-    metrics_path: /metrics
-    static_configs:
-      - targets: ['blogapp.api:80']   # for docker use
-      #- targets: ['localhost:5000']   # for without docker use
