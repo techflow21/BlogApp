@@ -121,7 +121,7 @@ public class PostService : IPostService
     {
         for (int p = 1; p <= 5; p++)
             for (int s = 10; s <= 50; s += 10)
-                await _cache.RemoveAsync($"posts_page_{p}_{s}____");
+                await _cache.RemoveAsync($"posts_page_{p}_{s}__");
     }
 
     private static PostResponse MapToResponse(Post p) => new(

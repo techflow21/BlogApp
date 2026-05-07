@@ -20,7 +20,7 @@ public class CacheService : ICacheService
     {
         var value = await _cache.StringGetAsync(key);
         if (value.IsNullOrEmpty) return default;
-        _logger.LogInformation("Cache HIT for {Key}", key);
+        _logger.LogInformation("Cache HIT for key (length={KeyLength})", key.Length);
         return JsonSerializer.Deserialize<T>(value!);
     }
 
@@ -28,12 +28,12 @@ public class CacheService : ICacheService
     {
         var json = JsonSerializer.Serialize(value);
         await _cache.StringSetAsync(key, json, expiry);
-        _logger.LogInformation("Cache SET for {Key}", key);
+        _logger.LogInformation("Cache SET for key (length={KeyLength})", key.Length);
     }
 
     public async Task RemoveAsync(string key)
     {
         await _cache.KeyDeleteAsync(key);
-        _logger.LogInformation("Cache REMOVE for {Key}", key);
+        _logger.LogInformation("Cache REMOVE for key (length={KeyLength})", key.Length);
     }
 }
