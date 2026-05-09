@@ -73,7 +73,7 @@ public class PostsController : ControllerBase
     [Authorize]
     [HttpPost]
     [Consumes("multipart/form-data")]
-    public async Task<IActionResult> CreateWithImage([FromForm] CreatePostFormRequest req)
+    public async Task<IActionResult> CreateWithImage([FromForm] PostFormRequest req)
     {
         var userId = User.FindFirstValue("uid")!;
         var userName = User.FindFirstValue(ClaimTypes.Email) ?? userId;
@@ -86,8 +86,9 @@ public class PostsController : ControllerBase
                 return BadRequest(validationError);
 
             await using var imageStream = req.CoverImage.OpenReadStream();
-            var safeFileName = Path.GetFileName(req.CoverImage.FileName);
-            coverImageUrl = await _fileService.SaveFileAsync(imageStream, safeFileName, userId);
+            var extension = Path.GetExtension(req.CoverImage.FileName).ToLowerInvariant();
+            var generatedInputFileName = $"upload{extension}";
+            coverImageUrl = await _fileService.SaveFileAsync(imageStream, generatedInputFileName, userId);
         }
 
         var createReq = new CreatePostRequest(req.Title, req.Content, req.Summary, req.Tags, coverImageUrl, req.Status);
@@ -109,7 +110,7 @@ public class PostsController : ControllerBase
     [Authorize]
     [HttpPut("{id}")]
     [Consumes("multipart/form-data")]
-    public async Task<IActionResult> UpdateWithImage(string id, [FromForm] UpdatePostFormRequest req)
+    public async Task<IActionResult> UpdateWithImage(string id, [FromForm] PostFormRequest req)
     {
         var userId = User.FindFirstValue("uid")!;
         var coverImageUrl = req.CoverImageUrl;
@@ -121,8 +122,9 @@ public class PostsController : ControllerBase
                 return BadRequest(validationError);
 
             await using var imageStream = req.CoverImage.OpenReadStream();
-            var safeFileName = Path.GetFileName(req.CoverImage.FileName);
-            coverImageUrl = await _fileService.SaveFileAsync(imageStream, safeFileName, userId);
+            var extension = Path.GetExtension(req.CoverImage.FileName).ToLowerInvariant();
+            var generatedInputFileName = $"upload{extension}";
+            coverImageUrl = await _fileService.SaveFileAsync(imageStream, generatedInputFileName, userId);
         }
 
         var updateReq = new UpdatePostRequest(req.Title, req.Content, req.Summary, req.Tags, coverImageUrl, req.Status);
@@ -180,18 +182,7 @@ public class PostsController : ControllerBase
         return null;
     }
 
-    public class CreatePostFormRequest
-    {
-        public string Title { get; set; } = string.Empty;
-        public string Content { get; set; } = string.Empty;
-        public string? Summary { get; set; }
-        public List<string>? Tags { get; set; }
-        public string? CoverImageUrl { get; set; }
-        public IFormFile? CoverImage { get; set; }
-        public BlogApp.Domain.Entities.PostStatus Status { get; set; }
-    }
-
-    public class UpdatePostFormRequest
+    public class PostFormRequest
     {
         public string Title { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
