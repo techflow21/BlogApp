@@ -149,6 +149,7 @@ public class Program
         app.UseSwaggerUI();
         app.UseSerilogRequestLogging();
         app.UseHttpLogging();
+        app.UseStaticFiles();
         app.UseRouting();
         app.UseAuthentication();
         app.UseAuthorization();
