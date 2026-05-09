@@ -86,7 +86,8 @@ public class PostsController : ControllerBase
                 return BadRequest(validationError);
 
             await using var imageStream = req.CoverImage.OpenReadStream();
-            coverImageUrl = await _fileService.SaveFileAsync(imageStream, req.CoverImage.FileName, userId);
+            var safeFileName = Path.GetFileName(req.CoverImage.FileName);
+            coverImageUrl = await _fileService.SaveFileAsync(imageStream, safeFileName, userId);
         }
 
         var createReq = new CreatePostRequest(req.Title, req.Content, req.Summary, req.Tags, coverImageUrl, req.Status);
@@ -120,7 +121,8 @@ public class PostsController : ControllerBase
                 return BadRequest(validationError);
 
             await using var imageStream = req.CoverImage.OpenReadStream();
-            coverImageUrl = await _fileService.SaveFileAsync(imageStream, req.CoverImage.FileName, userId);
+            var safeFileName = Path.GetFileName(req.CoverImage.FileName);
+            coverImageUrl = await _fileService.SaveFileAsync(imageStream, safeFileName, userId);
         }
 
         var updateReq = new UpdatePostRequest(req.Title, req.Content, req.Summary, req.Tags, coverImageUrl, req.Status);
@@ -159,7 +161,7 @@ public class PostsController : ControllerBase
         var buffer = new byte[maxSignatureLength];
 
         await using var stream = file.OpenReadStream();
-        var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+        var bytesRead = await stream.ReadAsync(buffer);
 
         var signatureMatched = signatures.Any(sig =>
             bytesRead >= sig.Length && buffer.AsSpan(0, sig.Length).SequenceEqual(sig));
