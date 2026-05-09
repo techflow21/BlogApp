@@ -3,6 +3,7 @@ using BlogApp.Application.Services;
 using BlogApp.Domain.Interfaces;
 using BlogApp.Infrastructure.Repositories;
 using BlogApp.Infrastructure.Services;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
@@ -31,6 +32,10 @@ public static class InfrastructureServiceExtensions
         services.Configure<JwtOptions>(config.GetSection("Jwt"));
         services.Configure<SmtpOptions>(config.GetSection("Smtp"));
         services.Configure<FileStorageOptions>(config.GetSection("FileStorage"));
+        services.Configure<FirebaseStorageOptions>(config.GetSection("Firebase"));
+
+        // HTTP context accessor (needed by FileService to build dynamic local file URLs)
+        services.AddHttpContextAccessor();
 
         // Infrastructure services
         services.AddSingleton<IJwtService, JwtService>();
