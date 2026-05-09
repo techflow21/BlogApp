@@ -19,7 +19,7 @@ export default function HomePage() {
 
   const load = useCallback(() => {
     dispatch(fetchPostsThunk({ page, pageSize: 9, tag: tag || undefined }));
-  }, [dispatch, page, tag, search]);
+  }, [dispatch, page, tag]);
 
   useEffect(() => { load(); }, [load]);
 
