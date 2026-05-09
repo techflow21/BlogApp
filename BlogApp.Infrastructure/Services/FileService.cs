@@ -19,7 +19,7 @@ public class FirebaseStorageOptions
     public string? StorageBucket { get; set; }
 }
 
-public class FileService : IFileService
+public class FileService : IFileService, IDisposable
 {
     private readonly FileStorageOptions _localOpt;
     private readonly FirebaseStorageOptions _firebaseOpt;
@@ -28,6 +28,7 @@ public class FileService : IFileService
 
     private StorageClient? _storageClientCache;
     private readonly SemaphoreSlim _storageLock = new(1, 1);
+    private bool _disposed;
 
     public FileService(
         IOptions<FileStorageOptions> localOpt,
@@ -55,8 +56,14 @@ public class FileService : IFileService
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Firebase upload failed, falling back to local storage");
-                if (fileStream.CanSeek)
-                    fileStream.Seek(0, SeekOrigin.Begin);
+
+                if (!fileStream.CanSeek)
+                {
+                    _logger.LogError("Stream is not seekable; cannot fall back to local storage after Firebase failure");
+                    throw;
+                }
+
+                fileStream.Seek(0, SeekOrigin.Begin);
             }
         }
 
@@ -92,7 +99,10 @@ public class FileService : IFileService
             if (!string.IsNullOrWhiteSpace(keyPath) && File.Exists(keyPath))
             {
                 var json = await File.ReadAllTextAsync(keyPath);
-#pragma warning disable CS0618 // GoogleCredential.FromJson is the standard way to load service-account credentials from JSON
+                // GoogleCredential.FromJson is suppressed: GoogleCredential static helpers are deprecated in
+                // favour of CredentialFactory, but CredentialFactory is a static class without a usable
+                // instance factory path for JSON streams in the current SDK version.
+#pragma warning disable CS0618
                 var credential = GoogleCredential.FromJson(json);
 #pragma warning restore CS0618
                 _storageClientCache = await StorageClient.CreateAsync(credential);
@@ -149,4 +159,12 @@ public class FileService : IFileService
             ".webp" => "image/webp",
             _ => "application/octet-stream"
         };
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _storageLock.Dispose();
+        _storageClientCache?.Dispose();
+        _disposed = true;
+    }
 }
