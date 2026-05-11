@@ -33,6 +33,26 @@ public class Program
 
         builder.Host.UseSerilog();
 
+        // CORS – allow the frontend to reach the API from the origins listed in
+        // AllowedOrigins (config). In Development, any origin is allowed when
+        // no explicit list is provided. In other environments an explicit list
+        // is required; no CORS header is emitted if it is absent.
+        var allowedOrigins = config.GetSection("AllowedOrigins").Get<string[]>();
+        builder.Services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(policy =>
+            {
+                if (allowedOrigins is { Length: > 0 })
+                {
+                    policy.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader();
+                }
+                else if (builder.Environment.IsDevelopment())
+                {
+                    policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+                }
+            });
+        });
+
         // Infrastructure (MongoDB, Redis, Repositories, Services)
         builder.Services.AddInfrastructure(config);
 
@@ -151,6 +171,7 @@ public class Program
         app.UseHttpLogging();
         app.UseStaticFiles();
         app.UseRouting();
+        app.UseCors();
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseHttpMetrics();
