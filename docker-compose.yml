@@ -66,6 +66,8 @@ services:
       - "5341:80"
     environment:
       - ACCEPT_EULA=Y
+    networks:
+      - blogapp_network
 
 volumes:
   mongo_data:
